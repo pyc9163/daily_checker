@@ -36,7 +36,6 @@ interface FearGreedResponse {
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
     ...init,
-    next: { revalidate: 0 },
     cache: "no-store"
   });
 
