@@ -1,9 +1,19 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
+import { useCallback, useEffect, useState, useTransition } from "react";
 import { RefreshCw } from "lucide-react";
 import { MetricCard } from "@/lib/types";
 import { formatDateTime } from "@/lib/utils";
+
+async function fetchMacroCard(key: string) {
+  const response = await fetch(`/api/macro/${key}`, { cache: "no-store" });
+
+  if (!response.ok) {
+    throw new Error(`지표 ${key} 조회 실패`);
+  }
+
+  return (await response.json()) as { card: MetricCard };
+}
 
 export function TabMacro({ cards }: { cards: MetricCard[] }) {
   const [items, setItems] = useState(cards);
@@ -14,40 +24,32 @@ export function TabMacro({ cards }: { cards: MetricCard[] }) {
     setItems(cards);
   }, [cards]);
 
-  useEffect(() => {
-    startTransition(async () => {
-      try {
-        const response = await fetch("/api/macro", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { cards?: MetricCard[] };
-        if (data.cards?.length) {
-          setItems(data.cards);
-        }
-      } catch {
-        // Leave the stored briefing values on screen if real-time refresh fails.
-      }
-    });
-  }, []);
-
-  const refreshMacro = () => {
+  const refreshMacro = useCallback((showSummaryError = true) => {
     setError(null);
     startTransition(async () => {
-      try {
-        const response = await fetch("/api/macro", { cache: "no-store" });
-        if (!response.ok) {
-          throw new Error("매크로 지표를 불러오지 못했습니다.");
-        }
-        const data = (await response.json()) as { cards?: MetricCard[] };
-        setItems(data.cards ?? cards);
-      } catch (refreshError) {
-        setError(
-          refreshError instanceof Error
-            ? refreshError.message
-            : "매크로 지표를 불러오지 못했습니다."
-        );
+      const results = await Promise.allSettled(
+        cards.map((card) => fetchMacroCard(card.key))
+      );
+
+      const nextItems = cards.map((card, index) => {
+        const result = results[index];
+        return result.status === "fulfilled" ? result.value.card : card;
+      });
+
+      setItems(nextItems);
+
+      const failedCount = results.filter((result) => result.status === "rejected").length;
+      if (showSummaryError && failedCount === cards.length) {
+        setError("모든 매크로 소스가 실패했습니다. 잠시 후 다시 시도하세요.");
+      } else if (showSummaryError && failedCount > 0) {
+        setError(`${failedCount}개 지표는 갱신에 실패했고, 나머지는 정상 반영했습니다.`);
       }
     });
-  };
+  }, [cards]);
+
+  useEffect(() => {
+    refreshMacro(false);
+  }, [refreshMacro]);
 
   return (
     <div className="space-y-4">
@@ -58,7 +60,7 @@ export function TabMacro({ cards }: { cards: MetricCard[] }) {
         </div>
         <button
           type="button"
-          onClick={refreshMacro}
+          onClick={() => refreshMacro(true)}
           disabled={isPending}
           className="inline-flex items-center gap-2 rounded-2xl border border-slate-300 bg-white/80 px-4 py-2 text-sm font-semibold text-slate-700"
         >
@@ -83,12 +85,19 @@ export function TabMacro({ cards }: { cards: MetricCard[] }) {
             </div>
             <div className="mt-4 flex items-center justify-between text-xs text-muted">
               <span>
-                {typeof card.change === "number"
+                {card.error
+                  ? "업데이트 실패"
+                  : typeof card.change === "number"
                   ? `${card.change >= 0 ? "+" : ""}${card.change.toFixed(2)}%`
                   : "변화율 없음"}
               </span>
               <span>{formatDateTime(card.updatedAt)}</span>
             </div>
+            {card.error ? (
+              <p className="mt-3 rounded-2xl bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                {card.error}
+              </p>
+            ) : null}
           </article>
         ))}
       </div>

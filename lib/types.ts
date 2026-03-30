@@ -16,6 +16,7 @@ export interface MetricCard {
   change?: number | null;
   source: string;
   updatedAt?: string;
+  error?: string | null;
 }
 
 export interface CausalityScenario {
