@@ -8,10 +8,17 @@ export async function generateBriefing() {
   const now = new Date().toISOString();
   const date = now.slice(0, 10);
 
-  const [{ cards, raw }, newsHeadlines] = await Promise.all([
+  const [macroSnapshot, newsResult] = await Promise.allSettled([
     getMacroSnapshot(),
     getNewsHeadlines()
   ]);
+
+  if (macroSnapshot.status === "rejected") {
+    throw macroSnapshot.reason;
+  }
+
+  const { cards, raw } = macroSnapshot.value;
+  const newsHeadlines = newsResult.status === "fulfilled" ? newsResult.value : [];
 
   const analysis = await analyzeBriefing({
     date,

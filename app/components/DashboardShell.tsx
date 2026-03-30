@@ -20,7 +20,18 @@ async function fetchJson<T>(url: string, init?: RequestInit) {
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to load ${url}`);
+    let message = `Failed to load ${url}`;
+
+    try {
+      const data = (await response.json()) as { error?: string };
+      if (data.error) {
+        message = data.error;
+      }
+    } catch {
+      // Ignore JSON parsing failure and keep the generic message.
+    }
+
+    throw new Error(message);
   }
 
   return response.json() as Promise<T>;
