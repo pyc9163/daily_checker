@@ -136,48 +136,149 @@ export async function getNewsHeadlines() {
 }
 
 export async function getMacroSnapshot() {
-  const [dgs2, dgs10, dgs30, vix, dxy, wti, spFutures, fearGreed, coinGecko, btcFunding] =
-    await Promise.all([
-      getFredLatest("DGS2"),
-      getFredLatest("DGS10"),
-      getFredLatest("DGS30"),
-      getYahooQuote("^VIX"),
-      getYahooQuote("DX-Y.NYB"),
-      getYahooQuote("CL=F"),
-      getYahooQuote("ES=F"),
-      getFearGreed(),
-      getCoinGeckoSnapshot(),
-      getBtcFundingRate()
-    ]);
+  const results = await Promise.allSettled([
+    getFredLatest("DGS2"),
+    getFredLatest("DGS10"),
+    getFredLatest("DGS30"),
+    getYahooQuote("^VIX"),
+    getYahooQuote("DX-Y.NYB"),
+    getYahooQuote("CL=F"),
+    getYahooQuote("ES=F"),
+    getFearGreed(),
+    getCoinGeckoSnapshot(),
+    getBtcFundingRate()
+  ]);
 
-  const spread = dgs10.value - dgs2.value;
-  const spreadBps = spread * 100;
+  const [
+    dgs2Result,
+    dgs10Result,
+    dgs30Result,
+    vixResult,
+    dxyResult,
+    wtiResult,
+    spFuturesResult,
+    fearGreedResult,
+    coinGeckoResult,
+    btcFundingResult
+  ] = results;
+
+  const dgs2 = dgs2Result.status === "fulfilled" ? dgs2Result.value : null;
+  const dgs10 = dgs10Result.status === "fulfilled" ? dgs10Result.value : null;
+  const dgs30 = dgs30Result.status === "fulfilled" ? dgs30Result.value : null;
+  const vix = vixResult.status === "fulfilled" ? vixResult.value : null;
+  const dxy = dxyResult.status === "fulfilled" ? dxyResult.value : null;
+  const wti = wtiResult.status === "fulfilled" ? wtiResult.value : null;
+  const spFutures = spFuturesResult.status === "fulfilled" ? spFuturesResult.value : null;
+  const fearGreed = fearGreedResult.status === "fulfilled" ? fearGreedResult.value : null;
+  const coinGecko = coinGeckoResult.status === "fulfilled" ? coinGeckoResult.value : null;
+  const btcFunding = btcFundingResult.status === "fulfilled" ? btcFundingResult.value : null;
+
+  const spread =
+    typeof dgs10?.value === "number" && typeof dgs2?.value === "number"
+      ? dgs10.value - dgs2.value
+      : null;
+  const spreadBps = spread !== null ? spread * 100 : null;
+
+  const errors = results.flatMap((result, index) =>
+    result.status === "rejected"
+      ? [
+          {
+            source: [
+              "FRED:DGS2",
+              "FRED:DGS10",
+              "FRED:DGS30",
+              "YAHOO:^VIX",
+              "YAHOO:DX-Y.NYB",
+              "YAHOO:CL=F",
+              "YAHOO:ES=F",
+              "CNN:FearGreed",
+              "COINGECKO",
+              "BINANCE:BTCUSDT"
+            ][index],
+            message:
+              result.reason instanceof Error
+                ? result.reason.message
+                : "Unknown data source failure"
+          }
+        ]
+      : []
+  );
+
+  if (errors.length === results.length) {
+    throw new Error(`All macro sources failed: ${errors[0]?.message ?? "Unknown error"}`);
+  }
 
   const cards: MetricCard[] = EMPTY_MACRO_CARDS.map((card) => {
     switch (card.key) {
       case "dgs2":
-        return { ...card, value: dgs2.value, displayValue: formatPercent(dgs2.value), updatedAt: dgs2.date };
+        return {
+          ...card,
+          value: dgs2?.value ?? null,
+          displayValue: formatPercent(dgs2?.value ?? null),
+          updatedAt: dgs2?.date
+        };
       case "dgs10":
-        return { ...card, value: dgs10.value, displayValue: formatPercent(dgs10.value), updatedAt: dgs10.date };
+        return {
+          ...card,
+          value: dgs10?.value ?? null,
+          displayValue: formatPercent(dgs10?.value ?? null),
+          updatedAt: dgs10?.date
+        };
       case "dgs30":
-        return { ...card, value: dgs30.value, displayValue: formatPercent(dgs30.value), updatedAt: dgs30.date };
+        return {
+          ...card,
+          value: dgs30?.value ?? null,
+          displayValue: formatPercent(dgs30?.value ?? null),
+          updatedAt: dgs30?.date
+        };
       case "spread_2s10s":
-        return { ...card, value: spreadBps, displayValue: `${spreadBps.toFixed(1)}bp`, updatedAt: new Date().toISOString() };
+        return {
+          ...card,
+          value: spreadBps,
+          displayValue: spreadBps !== null ? `${spreadBps.toFixed(1)}bp` : "-",
+          updatedAt: spreadBps !== null ? new Date().toISOString() : undefined
+        };
       case "vix":
-        return { ...card, value: vix.value, change: vix.change, displayValue: formatNumber(vix.value), updatedAt: new Date().toISOString() };
+        return {
+          ...card,
+          value: vix?.value ?? null,
+          change: vix?.change ?? null,
+          displayValue: formatNumber(vix?.value ?? null),
+          updatedAt: vix ? new Date().toISOString() : undefined
+        };
       case "dxy":
-        return { ...card, value: dxy.value, change: dxy.change, displayValue: formatNumber(dxy.value), updatedAt: new Date().toISOString() };
+        return {
+          ...card,
+          value: dxy?.value ?? null,
+          change: dxy?.change ?? null,
+          displayValue: formatNumber(dxy?.value ?? null),
+          updatedAt: dxy ? new Date().toISOString() : undefined
+        };
       case "wti":
-        return { ...card, value: wti.value, change: wti.change, displayValue: `$${formatNumber(wti.value)}`, updatedAt: new Date().toISOString() };
+        return {
+          ...card,
+          value: wti?.value ?? null,
+          change: wti?.change ?? null,
+          displayValue: wti ? `$${formatNumber(wti.value)}` : "-",
+          updatedAt: wti ? new Date().toISOString() : undefined
+        };
       case "fear_greed":
         return {
           ...card,
-          value: fearGreed.value,
-          displayValue: `${formatNumber(fearGreed.value, { maximumFractionDigits: 0 })}${fearGreed.rating ? ` · ${fearGreed.rating}` : ""}`,
-          updatedAt: fearGreed.timestamp
+          value: fearGreed?.value ?? null,
+          displayValue: fearGreed
+            ? `${formatNumber(fearGreed.value, { maximumFractionDigits: 0 })}${fearGreed.rating ? ` · ${fearGreed.rating}` : ""}`
+            : "-",
+          updatedAt: fearGreed?.timestamp
         };
       case "sp_futures":
-        return { ...card, value: spFutures.value, change: spFutures.change, displayValue: formatNumber(spFutures.value), updatedAt: new Date().toISOString() };
+        return {
+          ...card,
+          value: spFutures?.value ?? null,
+          change: spFutures?.change ?? null,
+          displayValue: formatNumber(spFutures?.value ?? null),
+          updatedAt: spFutures ? new Date().toISOString() : undefined
+        };
       default:
         return card;
     }
@@ -189,7 +290,8 @@ export async function getMacroSnapshot() {
       rates: { dgs2, dgs10, dgs30, spread2s10s: spread },
       market: { vix, dxy, wti, spFutures },
       sentiment: fearGreed,
-      crypto: { ...coinGecko, btcFunding }
+      crypto: { ...(coinGecko ?? {}), btcFunding },
+      errors
     }
   };
 }
